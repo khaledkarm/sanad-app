@@ -28,6 +28,11 @@ jobs:
           sudo unzip -q /tmp/gradle.zip -d /opt
           echo "/opt/gradle-8.9/bin" >> $GITHUB_PATH
 
+      - name: Prepare Android config dir
+        run: |
+          mkdir -p "$HOME/.config/.android"
+          sudo chown -R runner:runner "$HOME/.config" || true
+
       - name: Build debug APK
         run: |
           cd android
