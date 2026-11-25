@@ -74,8 +74,7 @@ const TOOLS = [{
     },
     {
       name: 'youtube_channel_stats',
-      description: 'إحصائيات قناة اليوتيوب: المشتركين والمشاهدات وعدد الفيديوهات',
-      parameters: { type: 'object', properties: {} }
+      description: 'إحصائيات قناة اليوتيوب: المشتركين والمشاهدات وعدد الفيديوهات'
     },
     {
       name: 'youtube_list_videos',
@@ -323,13 +322,15 @@ export default async function handler(req, res) {
       const calls = parts.filter(p => p.functionCall);
       const texts = parts.filter(p => p.text).map(p => p.text);
       if (texts.length) reply = texts.join('\n');
-      contents.push({ role: 'model', parts: parts.map(p => p.functionCall ? { functionCall: p.functionCall } : { text: p.text }) });
+      contents.push({ role: 'model', parts });
       if (!calls.length) break;
       const responses = [];
       for (const c of calls) {
         const { result, pending } = await execTool(c.functionCall.name, c.functionCall.args || {});
         if (pending) pendings.push(pending);
-        responses.push({ functionResponse: { name: c.functionCall.name, response: { result: result || {} } } });
+        const fr = { name: c.functionCall.name, response: { result: result || {} } };
+        if (c.functionCall.id) fr.id = c.functionCall.id;
+        responses.push({ functionResponse: fr });
       }
       contents.push({ role: 'user', parts: responses });
     }
