@@ -1,0 +1,153 @@
+<!doctype html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1720">
+<title>سند</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: system-ui, 'Segoe UI', sans-serif;
+    background: #0f1720; color: #e8edf2;
+    display: flex; flex-direction: column;
+  }
+  header {
+    padding: 14px 18px; background: #16202b; border-bottom: 1px solid #24313f;
+    display: flex; align-items: center; gap: 10px;
+  }
+  header h1 { font-size: 20px; font-weight: 700; flex: 1; }
+  #status { font-size: 11px; padding: 4px 10px; border-radius: 999px; background: #24313f; color: #9fb0bd; }
+  #status.on { background: #14352a; color: #5ad6a0; }
+  #chat { flex: 1; overflow-y: auto; padding: 16px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 16px; line-height: 1.7; white-space: pre-wrap; word-break: break-word; font-size: 15px; }
+  .msg.user { align-self: flex-start; background: #1a73e8; color: #fff; border-bottom-left-radius: 4px; }
+  .msg.bot { align-self: flex-end; background: #1e2b38; border-bottom-right-radius: 4px; }
+  .msg.sys { align-self: center; background: transparent; color: #7d8fa0; font-size: 12px; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; padding: 0 14px 8px; }
+  .chip { background: #1e2b38; border: 1px solid #2c3d4d; color: #b8c7d4; border-radius: 999px; padding: 7px 13px; font-size: 13px; cursor: pointer; }
+  .chip:active { background: #27394a; }
+  .pending {
+    margin: 0 14px 8px; background: #14352a; border: 1px solid #2a5c46; border-radius: 14px; padding: 12px 14px;
+  }
+  .pending .label { font-size: 13px; color: #bfe9d4; white-space: pre-wrap; max-height: 180px; overflow-y: auto; margin-bottom: 10px; }
+  .pending .row { display: flex; gap: 10px; }
+  .pending button { flex: 1; padding: 10px; border: 0; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  .pending .yes { background: #22a06b; color: #fff; }
+  .pending .no { background: #2c3d4d; color: #b8c7d4; }
+  #bar { display: flex; gap: 8px; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: #16202b; border-top: 1px solid #24313f; }
+  #inp {
+    flex: 1; background: #0f1720; color: #e8edf2; border: 1px solid #2c3d4d; border-radius: 14px;
+    padding: 12px 14px; font-size: 15px; font-family: inherit; resize: none; max-height: 120px; outline: none;
+  }
+  #send { background: #1a73e8; color: #fff; border: 0; border-radius: 14px; padding: 0 20px; font-size: 17px; font-weight: 700; cursor: pointer; }
+  #send:disabled { opacity: .5; }
+  .typing { color: #7d8fa0; font-size: 13px; align-self: flex-end; padding: 2px 6px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>سند</h1>
+  <span id="status">...</span>
+</header>
+<div id="chat"></div>
+<div class="chips" id="chips">
+  <button class="chip">لخص آخر إيميلاتي</button>
+  <button class="chip">إحصائيات القناة</button>
+  <button class="chip">أحدث التعليقات على يوتيوب</button>
+</div>
+<div id="pendingbox"></div>
+<div id="bar">
+  <textarea id="inp" rows="1" placeholder="اكتب طلبك هنا..."></textarea>
+  <button id="send">ابعت</button>
+</div>
+<script>
+const chat = document.getElementById('chat');
+const inp = document.getElementById('inp');
+const sendBtn = document.getElementById('send');
+const statusEl = document.getElementById('status');
+const pendingBox = document.getElementById('pendingbox');
+const history = [];
+
+function addMsg(text, cls) {
+  const d = document.createElement('div');
+  d.className = 'msg ' + cls;
+  d.textContent = text;
+  chat.appendChild(d);
+  chat.scrollTop = chat.scrollHeight;
+  return d;
+}
+
+async function health() {
+  try {
+    const r = await fetch('/api/health');
+    const j = await r.json();
+    if (j.googleLinked) { statusEl.textContent = 'جوجل متربط'; statusEl.className = 'on'; }
+    else { statusEl.textContent = 'جوجل مش متربط'; }
+  } catch { statusEl.textContent = 'غير متصل'; }
+}
+
+let busy = false;
+async function send(text) {
+  text = (text || inp.value).trim();
+  if (!text || busy) return;
+  busy = true; sendBtn.disabled = true;
+  inp.value = ''; inp.style.height = 'auto';
+  addMsg(text, 'user');
+  const t = addMsg('...', 'typing');
+  try {
+    const r = await fetch('/api/chat', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, history })
+    });
+    const j = await r.json();
+    t.remove();
+    addMsg(j.reply || 'مفيش رد', 'bot');
+    history.push({ role: 'user', text }, { role: 'model', text: j.reply || '' });
+    if (j.pending) showPending(j.pending);
+  } catch (e) {
+    t.remove();
+    addMsg('مشكلة في الاتصال، جرب تاني', 'sys');
+  }
+  busy = false; sendBtn.disabled = false;
+  inp.focus();
+}
+
+function showPending(p) {
+  pendingBox.innerHTML = '';
+  const d = document.createElement('div');
+  d.className = 'pending';
+  const label = document.createElement('div');
+  label.className = 'label'; label.textContent = p.label;
+  const row = document.createElement('div'); row.className = 'row';
+  const yes = document.createElement('button'); yes.className = 'yes'; yes.textContent = 'تأكيد';
+  const no = document.createElement('button'); no.className = 'no'; no.textContent = 'إلغاء';
+  yes.onclick = async () => {
+    yes.disabled = no.disabled = true; yes.textContent = '...';
+    try {
+      const r = await fetch('/api/act', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: p.kind, args: p.args })
+      });
+      const j = await r.json();
+      addMsg(j.message || (j.ok ? 'تم' : 'حصلت مشكلة'), 'sys');
+    } catch { addMsg('مشكلة في الاتصال أثناء التنفيذ', 'sys'); }
+    pendingBox.innerHTML = '';
+  };
+  no.onclick = () => { pendingBox.innerHTML = ''; addMsg('اتلغت', 'sys'); };
+  row.appendChild(no); row.appendChild(yes);
+  d.appendChild(label); d.appendChild(row);
+  pendingBox.appendChild(d);
+}
+
+sendBtn.onclick = () => send();
+inp.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } });
+inp.addEventListener('input', () => { inp.style.height = 'auto'; inp.style.height = Math.min(inp.scrollHeight, 120) + 'px'; });
+document.querySelectorAll('.chip').forEach(c => c.onclick = () => send(c.textContent));
+
+addMsg('أهلا بيك يا خالد. أنا سند. اسألني عن أي موقع، أو عن إيميلاتك، أو عن قناة نقطة تحول.', 'bot');
+health();
+</script>
+</body>
+</html>

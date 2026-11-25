@@ -1,0 +1,14 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.khaled.sanad'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.khaled.sanad'
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName '1.0'
+    }
+}
